@@ -1,0 +1,16 @@
+Linux (Ubuntu / Debian)Open your terminal >> update package lists: sudo apt update
+Install OpenJDK 21: sudo apt install openjdk-21-jdk -y
+----------------------------------------------------------------
+For docker install - 
+sudo apt-get update && sudo apt  install docker.io -y
+sudo docker --version
+-----------------------------------------------------------------
+For installing git - sudo apt install git -y
+-----------------------------------------------------------------
+For trivy install - 
+sudo apt-get install -y wget gnupg lsb-release
+wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+trivy --version 
+-----------------------------------------------------------------
+For Sonar cube scanner if you have jenkins please use plugins - SonarQube Scanner for Jenkins
+-----------------------------------------------------------------
