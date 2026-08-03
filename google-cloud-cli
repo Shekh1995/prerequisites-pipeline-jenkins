@@ -1,0 +1,13 @@
+Method 1: Using the Official APT Repository (Recommended)
+This approach handles dependencies properly and ensures you receive official updates alongside system upgrades.Update system packages and install initial dependencies:bashsudo apt-get update
+----------------------------------------------------------------------------------------------------------------------
+sudo apt-get install -y ca-certificates gnupg curl
+
+Use code with caution.Import the Google Cloud public key to verify package integrity:
+curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+----------------------------------------------------------------------------------------------------------------------
+Use code with caution.Add the gcloud CLI repository to your system's package sources:bash
+echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+-----------------------------------------------------------------------------------------------------------------------
+Use code with caution.Update package lists and install the CLI:
+sudo apt-get update && sudo apt-get install -y google-cloud-cli
