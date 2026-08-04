@@ -1,0 +1,6 @@
+ docker run --name shekhar  -p 80:80 nginx -d
+ mkdir -p ~/docker-nginx/html
+ cd ~/docker-nginx/html
+ vi index.html
+ docker ps -a
+ docker run --name docker-nginx -p 80:80 -d -v ~/docker-nginx/html:/usr/share/nginx/html nginx
