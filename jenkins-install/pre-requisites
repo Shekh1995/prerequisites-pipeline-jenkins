@@ -6,7 +6,7 @@ Step 3: Add Jenkins repo to the system i.e source list
 echo "deb [signed-by=/etc/apt/keyrings/jenkins-keyring.asc]"  https://pkg.jenkins.io/debian-stable binary/ | sudo tee  /etc/apt/sources.list.d/jenkins.list > /dev/null
 Step 4: Install Jenkins
 sudo apt update
-sudo apt install jenkins
+sudo apt install jenkins -y
 Step 5: Verify installation
 ----------------------------------------------------------------
 For docker install - 
