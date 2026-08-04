@@ -1,4 +1,4 @@
- docker run --name shekhar  -p 80:80 nginx -d
+ docker run --name shekhar -p 80:80 nginx -d
  mkdir -p ~/docker-nginx/html
  cd ~/docker-nginx/html
  vi index.html
