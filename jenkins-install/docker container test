@@ -8,3 +8,11 @@ docker run --name docker-nginx -p 80:80 -d -v ~/docker-nginx/html:/usr/share/ngi
 to get jenkins - docker run -it -d -p 8080:8080 jenkins/jenkins:latest
 --------------------------------------
 To get password for jenkins inside container - docker exec -it <conatiner_id> /bin/bash
+---------------------------------------
+docker system df
+docker system prune
+docker image prune -a
+---------------------------------------
+docker save (image-name) > backup(name).tar
+docker load -i backup.tar
+
