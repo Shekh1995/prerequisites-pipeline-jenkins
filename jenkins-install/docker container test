@@ -15,4 +15,6 @@ docker image prune -a
 ---------------------------------------
 docker save (image-name) > backup(name).tar
 docker load -i backup.tar
+--------------------------------------
+For docker slim and minimal version is used 
 
