@@ -50,11 +50,8 @@ For Sonar cube scanner if you have jenkins please use plugins - SonarQube Scanne
 sudo apt update && sudo apt install unzip wget -y
 
 # Download the SonarScanner CLI binary package - wget https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
-
 # Unzip the package - unzip sonar-scanner-cli-5.0.1.3006-linux.zip
-
 # Move the extracted directory to /opt for system-wide availability - sudo mv sonar-scanner-5.0.1.3006-linux /opt/sonar-scanner
-
 Use code with caution.(Note: You can check the SonarSource Binaries Repository if you need to grab a different specific version).2. Configure Environment VariablesTo make the sonar-scanner command executable from any path or directory in your terminal, add it to your profile system configuration:bash# Append the binary path to your .bashrc file
 echo 'export PATH="$PATH:/opt/sonar-scanner/bin"' >> ~/.bashrc
 
