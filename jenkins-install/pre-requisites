@@ -16,12 +16,13 @@ Fix: Using /opt/jenkins - If you want to continue using /opt/jenkins, grant owne
 sudo mkdir -p /opt/jenkins
 sudo chown -R ubuntu:ubuntu /opt/jenkins
 chmod -R 755 /opt/jenkins
+----------------------------------------------------------------
 Check current swap: free -h
 If Swap is 0B, create a 2 GB swap file:
-sudo fallocate -l 2G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
+sudo fallocate -l 2G /swapfile 
+sudo chmod 600 /swapfile 
+sudo mkswap /swapfile 
+sudo swapon /swapfile 
 
 Step 5: Verify installation
 ----------------------------------------------------------------
