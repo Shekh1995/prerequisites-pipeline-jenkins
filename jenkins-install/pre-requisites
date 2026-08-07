@@ -11,6 +11,11 @@ https://pkg.jenkins.io/debian-stable binary/ | sudo tee /etc/apt/sources.list.d/
 
 sudo apt update
 sudo apt install jenkins -y
+---------------------------------------------------------------
+Fix: Using /opt/jenkins - If you want to continue using /opt/jenkins, grant ownership to the ubuntu user:
+sudo mkdir -p /opt/jenkins
+sudo chown -R ubuntu:ubuntu /opt/jenkins
+chmod -R 755 /opt/jenkins
 
 Step 5: Verify installation
 ----------------------------------------------------------------
