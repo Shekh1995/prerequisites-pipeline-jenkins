@@ -28,6 +28,8 @@ Step 5: Verify installation
 For docker install - 
 sudo apt-get update && sudo apt  install docker.io -y
 sudo docker --version
+
+install git - sudo apt update && sudo apt install -y git
 -----------------------------------------------------------------
 To install the latest stable versions of Docker CLI, Docker Engine, and their dependencies:
 1. download the script - $ curl -fsSL https://get.docker.com -o install-docker.sh
