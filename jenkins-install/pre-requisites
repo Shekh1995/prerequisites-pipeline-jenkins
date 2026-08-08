@@ -44,6 +44,11 @@ trivy --version
 -----------------------------------------------------------------
 Check the agent process conectio on slave agent - ps -ef | grep '[a]gent.jar'
 -----------------------------------------------------------------
+Check GCP → AWS connectivity (slave agent)
+Your Jenkins controller is on GCP and the agent is on AWS.
+From AWS: curl -I http://136.113.250.206:8080/login
+Then: nc -vz 136.113.250.206 8080
+-----------------------------------------------------------------
 For Sonar cube scanner if you have jenkins please use plugins - SonarQube Scanner for Jenkins
 -----------------------------------------------------------------
 
