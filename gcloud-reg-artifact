@@ -4,3 +4,7 @@ gcloud config set project PROJECT_ID
 gcloud auth configure-docker us-central1-docker.pkg.dev
 docker tag myapp us-central1-docker.pkg.dev/PROJECT_ID/REPOSITORY/myapp:v1
 docker push us-central1-docker.pkg.dev/PROJECT_ID/REPOSITORY/myapp:v1
+
+
+------------------------------
+for scp gcloud compute scp aws-key.pem <GCP-VM-NAME>:~/.ssh/aws-key.pem --zone <GCP-ZONE>
