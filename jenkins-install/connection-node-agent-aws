@@ -1,0 +1,236 @@
+Your setup is:
+
+Jenkins Controller
+GCP VM
+        |
+        | SSH
+        ↓
+AWS EC2 Ubuntu
+43.204.144.140 (e.g)
+        |
+        └── Jenkins Agent
+
+We will do this in 5 steps.
+
+STEP 1 — Prepare the AWS Ubuntu VM
+
+First, go to:
+
+AWS Console → EC2 → Instances → your instance → Connect
+
+Use EC2 Instance Connect.
+
+You should get a terminal like:
+
+ubuntu@ip-172-31-12-9:~$
+
+Run these commands one by one:
+
+whoami
+
+Expected:ubuntu
+
+Then:java -version
+If Java is NOT installed
+
+Run:
+sudo apt update
+
+Then:
+sudo apt install -y openjdk-17-jre
+
+Then: java -version
+
+You should see Java 17. Also create the Jenkins working directory
+
+Run: mkdir -p /home/ubuntu/jenkins-agent
+Then:chmod 755 /home/ubuntu/jenkins-agent
+
+Stop here. STEP 2 — Create SSH key on Jenkins Controller
+Now go to your Jenkins Controller terminal.
+You previously showed that your controller is:
+jenkins-master-vm
+
+and you can access it through Google Cloud SSH-in-browser.
+
+You should see:
+
+root@jenkins-master-vm:~#
+
+Run:sudo -u jenkins mkdir -p /var/lib/jenkins/.ssh
+
+Then create the key: sudo -u jenkins ssh-keygen -t rsa -b 4096 -f /var/lib/jenkins/.ssh/aws-agent
+
+When it asks for passphrase:
+Enter passphrase:
+Press Enter.
+Then press Enter again.
+
+You now have:/var/lib/jenkins/.ssh/aws-agent - PRIVATE KEY
+and: /var/lib/jenkins/.ssh/aws-agent.pub - PUBLIC KEY
+
+STEP 3 — Put the PUBLIC key on AWS
+Still on the Jenkins Controller, run:
+sudo cat /var/lib/jenkins/.ssh/aws-agent.pub
+
+You will see one line:
+ssh-rsa AAAA.... jenkins@jenkins-master-vm
+
+Copy the whole line.
+Now go back to your AWS EC2 terminal.
+
+Run:
+nano ~/.ssh/authorized_keys
+
+Paste the public key.
+
+Save:
+
+Ctrl + O
+Enter
+Ctrl + X
+
+Then run:
+
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/authorized_keys
+chown -R ubuntu:ubuntu ~/.ssh
+STEP 4 — Test SSH
+
+Now go back to the Jenkins Controller terminal.
+
+Run:
+
+sudo -u jenkins ssh -i /var/lib/jenkins/.ssh/aws-agent ubuntu@43.204.144.140
+
+If it asks:
+
+Are you sure you want to continue connecting?
+
+type:
+
+yes
+SUCCESS looks like:
+Welcome to Ubuntu
+
+and:
+
+ubuntu@ip-172-31-12-9:~$
+
+If you get:
+
+Permission denied (publickey)
+
+stop and send me the screenshot.
+
+Do not continue to Jenkins configuration until this SSH test works.
+
+STEP 5 — Configure Jenkins Credential
+
+Only after Step 4 works.
+
+Go to:
+
+Jenkins → Manage Jenkins → Credentials → System → Global credentials
+
+Create/edit:
+
+Kind:
+SSH Username with private key
+
+Username:
+ubuntu
+
+Private Key:
+Enter directly
+
+For the private key, on the Jenkins Controller run:
+
+sudo cat /var/lib/jenkins/.ssh/aws-agent
+
+Copy the complete output and paste it into the Jenkins Key box.
+
+It starts with something like:
+
+-----BEGIN RSA PRIVATE KEY-----
+
+and ends with:
+
+-----END RSA PRIVATE KEY-----
+
+Leave Passphrase empty because we created the key without one.
+
+Save it as:
+
+ID: aws-agent
+STEP 6 — Configure the Jenkins Node
+
+Go to:
+
+Manage Jenkins → Nodes → aws-agent → Configure
+
+Use:
+
+Name:
+aws-agent
+
+Number of executors:
+1
+
+Remote root directory:
+/home/ubuntu/jenkins-agent
+
+Launch method:
+Launch agents via SSH
+
+Host:
+43.204.144.140
+
+Credentials:
+aws-agent
+
+For now:
+
+Host Key Verification Strategy:
+Non verifying Verification Strategy
+
+Save.
+
+Then launch the agent.
+
+What should happen
+
+Jenkins will do:
+
+Jenkins Controller
+       |
+       | SSH authentication
+       | ✅
+       ↓
+AWS EC2
+       |
+       | Java 17
+       ↓
+remoting.jar
+       |
+       ↓
+Jenkins Agent
+       |
+       ↓
+🟢 Online
+Most important
+
+Don't jump between steps.
+
+Start with STEP 1 only.
+
+On the AWS EC2 terminal run:
+
+whoami
+java -version
+
+If Java is missing, run:
+
+sudo apt update
+sudo apt install -y openjdk-17-jre
+
