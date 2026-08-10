@@ -278,3 +278,108 @@ ssh -i ~/.ssh/kp-1.pem ubuntu@<AWS_PUBLIC_IP>
 **If this does not successfully log into AWS, the Jenkins credential will not work either.**
 
 If you send me a screenshot of your **Jenkins → Credentials → Add Credentials** page, I can tell you exactly what to enter in each field.
+
+---------------------------------------------------------------------------------------------------------------------------------------
+Also see this carefully - 
+
+For your **AWS Ubuntu Jenkins agent**, fill it like this:
+
+| Field                     | What to enter                                               |
+| ------------------------- | ----------------------------------------------------------- |
+| **Number of executors**   | `1`                                                         |
+| **Remote root directory** | `/home/ubuntu/jenkins`                                      |
+| **Labels**                | `aws-agent`                                                 |
+| **Usage**                 | `Only build jobs with label expressions matching this node` |
+
+### Your screenshot — specifically this field
+
+In **Remote root directory**, enter:
+
+```text
+/home/ubuntu/jenkins
+```
+
+Then press **Enter** or click elsewhere.
+
+### Important: create the directory on AWS
+
+SSH into your **AWS Ubuntu VM** and run:
+
+```bash
+mkdir -p /home/ubuntu/jenkins
+```
+
+Then verify:
+
+```bash
+ls -ld /home/ubuntu/jenkins
+```
+
+You should see something similar to:
+
+```text
+drwxr-xr-x ubuntu ubuntu ... /home/ubuntu/jenkins
+```
+
+If ownership is incorrect:
+
+```bash
+sudo chown -R ubuntu:ubuntu /home/ubuntu/jenkins
+```
+
+### So your configuration should be
+
+```text
+Name:
+aws-agent
+
+Number of executors:
+1
+
+Remote root directory:
+/home/ubuntu/jenkins
+
+Labels:
+aws-agent
+
+Usage:
+Only build jobs with label expressions matching this node
+```
+
+Then under **Launch method**, select:
+
+```text
+Launch agents via SSH
+```
+
+and use:
+
+```text
+Host:
+<AWS EC2 PUBLIC IP>
+
+Credentials:
+ubuntu (SSH key for AWS Jenkins agent)
+```
+
+### One important point
+
+You **do not need to install Jenkins on the AWS agent**.
+
+The AWS machine only needs the required tools:
+
+```bash
+java -version
+git --version
+python3 --version
+docker --version
+```
+
+Jenkins Controller connects to the AWS machine over SSH and places the Jenkins agent/workspace under:
+
+```text
+/home/ubuntu/jenkins
+```
+
+After you fill this field, **don't save yet if you haven't configured the SSH section**. Send me the next screenshot showing the **Launch agents via SSH** section, and I'll tell you exactly what to enter there.
+
