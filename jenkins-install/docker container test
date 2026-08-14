@@ -28,78 +28,37 @@ This example demonstrates **Docker custom bridge networking** and container-to-c
 docker network create --driver bridge my_bridge
 ```
 
-This creates a user-defined Docker bridge network called:
-
-```text
-my_bridge
-```
+This creates a user-defined Docker bridge network called:my_bridge
 
 ### Step 2 — Run two containers on the same network
-
-```bash
 docker run -dit --name app1 --network my_bridge alpine sh
 docker run -dit --name app2 --network my_bridge alpine sh
-```
-
 Now the topology is:
-
-```text
 Docker Host
      |
   my_bridge
    /     \
 app1     app2
-```
-
 Both containers are attached to the same custom bridge network.
 
 ### Step 3 — Test communication using the container name
 
 Enter `app1`:
-
-```bash
 docker exec -it app1 sh
-```
-
-Then from inside `app1`:
-
-```bash
-ping app2
-```
-
+Then from inside `app1`: ping app2
 Docker's built-in DNS resolves:
-
-```text
 app2
   ↓
 app2's container IP
-```
-
 So you don't need to know the IP address of `app2`.
 
 ### Why this is useful
-
-For example, instead of configuring:
-
-```text
-app → 172.18.0.3
-```
-
-you can configure:
-
-```text
-app → http://app2:8080
-```
-
 Docker's embedded DNS handles the name resolution.
 
-### Important distinction
-
-A **user-defined bridge network** is better for application communication than the default `bridge` network because containers attached to the same user-defined network can discover each other by container name.
+### Important distinction - A user-defined bridge network is better for application communication than the default `bridge` network because containers attached to the same user-defined network can discover each other by container name.
 
 The core idea from your image is:
 
-```text
 Create network
       ↓
 Attach app1 + app2
@@ -109,8 +68,8 @@ app1 calls "app2"
 Docker DNS resolves "app2"
       ↓
 Container-to-container communication
-```
 
 So the interview-ready statement is:
 
-> **A Docker custom bridge network allows containers on the same host to communicate with each other using container names through Docker's embedded DNS.**
+A Docker custom bridge network allows containers on the same host to communicate with each other using 
+container names through Docker's embedded DNS.
