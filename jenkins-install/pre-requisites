@@ -25,7 +25,7 @@ sudo swapon /swapfile
 
 Step 5: Verify installation
 ----------------------------------------------------------------
-For docker install - 
+For docker install - (sometimes doesn't work then use - sudo apt install -y snapd >> snap install kubectl --classic)
 sudo apt-get update && sudo apt  install docker.io -y
 sudo docker --version
 ----------------------------------------------------------------
