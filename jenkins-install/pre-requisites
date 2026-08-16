@@ -28,6 +28,13 @@ Step 5: Verify installation
 For docker install - (sometimes doesn't work then use - sudo apt install -y snapd >> snap install kubectl --classic)
 sudo apt-get update && sudo apt  install docker.io -y
 sudo docker --version
+-----------------------------------------------------------------
+for lazydocker install - curl https://raw.githubusercontent.com/jesseduffield/lazydocker/master/scripts/install_update_linux.sh | bash
+find /root -name lazydocker 2>/dev/null
+export PATH=$PATH:/root/.local/bin
+lazydocker --version
+lazydocker
+----------------------------------------------------------------
 ----------------------------------------------------------------
 install git - sudo apt update && sudo apt install -y git
 -----------------------------------------------------------------
