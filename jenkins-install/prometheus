@@ -1,4 +1,5 @@
 ## Infrastructure Creation
+kubectl config set-context --current --namespace=carshop
 
 ### Step 1 — Create a GKE Cluster
 Create a GKE cluster where Prometheus and Grafana will be deployed.
