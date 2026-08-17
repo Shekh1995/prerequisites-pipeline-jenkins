@@ -24,3 +24,95 @@ Notes -
 * **`kube-prometheus-stack`** → Name of the Helm release.
 * **`prometheus-community/kube-prometheus-stack`** → Helm chart being installed.
 * **`--namespace monitor`** → Deploys the monitoring stack into the `monitor` namespace.
+------------------------------------------------------------------------------------------------------------------------
+Monitoring oreder -
+
+1. Carshop Pod CPU Usage
+query - sum by (pod) (
+  rate(container_cpu_usage_seconds_total{
+    namespace="carshop",
+    container!="",
+    container!="POD"
+  }[5m])
+)
+---------------------------------------------------
+2. Carshop Pod Memory Usage
+sum by (pod) (
+  container_memory_working_set_bytes{
+    namespace="carshop",
+    container!="",
+    container!="POD"
+  }
+)
+----------------------------------------------------
+3. Pod Restarts (display pod in mb)
+sum by (pod) (
+  container_memory_working_set_bytes{
+    namespace="carshop",
+    container!="",
+    container!="POD"
+  }
+) / 1024 / 1024
+------------------------------------------------------
+4. Running Pods
+count(
+  kube_pod_status_phase{
+    namespace="carshop",
+    phase="Running"
+  } == 1
+)
+-------------------------------------------------------
+5. Pending Pods
+count(
+  kube_pod_status_phase{
+    namespace="carshop",
+    phase="Pending"
+  } == 1
+)
+--------------------------------------------------------
+6. CPU Usage by Node
+sum by (node) (
+  rate(container_cpu_usage_seconds_total{
+    container!="",
+    container!="POD"
+  }[5m])
+)
+----------------------------------------------------------
+7. Memory Usage by Node
+sum by (node) (
+  container_memory_working_set_bytes{
+    container!="",
+    container!="POD"
+  }
+) / 1024 / 1024 / 1024
+--------------------------------------------------------------
+8. Network Traffic 
+receive traffic -
+sum by (pod) (
+  rate(container_network_receive_bytes_total{
+    namespace="carshop",
+    pod!=""
+  }[5m])
+)
+------------------------------
+send traffic -
+sum by (pod) (
+  rate(container_network_transmit_bytes_total{
+    namespace="carshop",
+    pod!=""
+  }[5m])
+)
+---------------------------------------------------------------
+9. Pod Count
+count(
+  kube_pod_info{
+    namespace="carshop"
+  }
+)
+------------------------------------------------------------------
+10. Application Request Rate
+sum(
+  rate(http_requests_total{
+    namespace="carshop"
+  }[5m])
+)
