@@ -1,0 +1,25 @@
+## Infrastructure Creation
+
+### Step 1 — Create a GKE Cluster
+Create a GKE cluster where Prometheus and Grafana will be deployed.
+
+### Step 2 — Create a Monitoring Namespace
+Create a dedicated `monitor` namespace as a good Kubernetes practice - kubectl create namespace monitor
+
+Step 3 — Access the Prometheus & Grafana Helm Chart - The Helm chart for Prometheus and Grafana is available in the Prometheus 
+Community repository:
+[kube-prometheus-stack Helm Chart]
+(https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack?utm_source=chatgpt.com)
+
+Step 4 — Add the Helm Repository
+Add the Prometheus Community Helm repository and update the local Helm repository information.
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+
+Step 5 — Install Prometheus & Grafana - Install the `kube-prometheus-stack` Helm chart into the `monitor` namespace.
+helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack --namespace monitor
+
+Notes - 
+* **`kube-prometheus-stack`** → Name of the Helm release.
+* **`prometheus-community/kube-prometheus-stack`** → Helm chart being installed.
+* **`--namespace monitor`** → Deploys the monitoring stack into the `monitor` namespace.
