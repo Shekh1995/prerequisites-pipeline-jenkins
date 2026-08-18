@@ -25,7 +25,7 @@ Notes -
 * **`prometheus-community/kube-prometheus-stack`** → Helm chart being installed.
 * **`--namespace monitor`** → Deploys the monitoring stack into the `monitor` namespace.
 ------------------------------------------------------------------------------------------------------------------------
-Monitoring oreder -
+Monitoring order -
 
 1. Carshop Pod CPU Usage
 query - sum by (pod) (
