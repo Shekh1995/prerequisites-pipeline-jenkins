@@ -1,2 +1,3 @@
 manage iam user link aws - https://docs.aws.amazon.com/boto3/latest/guide/iam-example-managing-users.html
 aws client install - https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
+boto3 doc - https://docs.aws.amazon.com/boto3/latest/
