@@ -119,3 +119,6 @@ sum(
     namespace="carshop"
   }[5m])
 )
+
+------------------------------
+grafana dashboard - https://grafana.com/grafana/dashboards/
