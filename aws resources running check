@@ -1,1 +1,143 @@
+#!/bin/bash
 
+echo "======================================================================"
+echo "                  AWS RESOURCE INVENTORY"
+echo "======================================================================"
+
+printf "%-15s %-15s %-30s %-20s %-15s\n" \
+"REGION" "SERVICE" "RESOURCE" "STATUS" "TYPE"
+
+echo "----------------------------------------------------------------------"
+
+REGIONS=$(aws ec2 describe-regions \
+  --query 'Regions[].RegionName' \
+  --output text)
+
+for REGION in $REGIONS
+do
+
+    # EC2
+    aws ec2 describe-instances \
+      --region "$REGION" \
+      --filters Name=instance-state-name,Values=running \
+      --query 'Reservations[].Instances[].[InstanceId,State.Name,InstanceType]' \
+      --output text 2>/dev/null |
+    while read ID STATUS TYPE
+    do
+        printf "%-15s %-15s %-30s %-20s %-15s\n" \
+        "$REGION" "EC2" "$ID" "$STATUS" "$TYPE"
+    done
+
+    # RDS
+    aws rds describe-db-instances \
+      --region "$REGION" \
+      --query 'DBInstances[].[DBInstanceIdentifier,DBInstanceStatus,Engine]' \
+      --output text 2>/dev/null |
+    while read NAME STATUS TYPE
+    do
+        printf "%-15s %-15s %-30s %-20s %-15s\n" \
+        "$REGION" "RDS" "$NAME" "$STATUS" "$TYPE"
+    done
+
+    # Lambda
+    aws lambda list-functions \
+      --region "$REGION" \
+      --query 'Functions[].[FunctionName,Runtime]' \
+      --output text 2>/dev/null |
+    while read NAME TYPE
+    do
+        printf "%-15s %-15s %-30s %-20s %-15s\n" \
+        "$REGION" "Lambda" "$NAME" "ACTIVE" "$TYPE"
+    done
+
+    # EKS
+    aws eks list-clusters \
+      --region "$REGION" \
+      --query 'clusters[]' \
+      --output text 2>/dev/null |
+    tr '\t' '\n' |
+    while read NAME
+    do
+        [ -n "$NAME" ] && printf "%-15s %-15s %-30s %-20s %-15s\n" \
+        "$REGION" "EKS" "$NAME" "ACTIVE" "Cluster"
+    done
+
+    # ECS
+    aws ecs list-clusters \
+      --region "$REGION" \
+      --query 'clusterArns[]' \
+      --output text 2>/dev/null |
+    tr '\t' '\n' |
+    while read ARN
+    do
+        NAME=$(basename "$ARN")
+        [ -n "$NAME" ] && printf "%-15s %-15s %-30s %-20s %-15s\n" \
+        "$REGION" "ECS" "$NAME" "ACTIVE" "Cluster"
+    done
+
+    # Load Balancers
+    aws elbv2 describe-load-balancers \
+      --region "$REGION" \
+      --query 'LoadBalancers[].[LoadBalancerName,State.Code,Type]' \
+      --output text 2>/dev/null |
+    while read NAME STATUS TYPE
+    do
+        printf "%-15s %-15s %-30s %-20s %-15s\n" \
+        "$REGION" "LoadBalancer" "$NAME" "$STATUS" "$TYPE"
+    done
+
+    # NAT Gateways
+    aws ec2 describe-nat-gateways \
+      --region "$REGION" \
+      --filter Name=state,Values=available,pending \
+      --query 'NatGateways[].[NatGatewayId,State]' \
+      --output text 2>/dev/null |
+    while read ID STATUS
+    do
+        printf "%-15s %-15s %-30s %-20s %-15s\n" \
+        "$REGION" "NAT Gateway" "$ID" "$STATUS" "NAT"
+    done
+
+    # EBS
+    aws ec2 describe-volumes \
+      --region "$REGION" \
+      --query 'Volumes[].[VolumeId,State,VolumeType]' \
+      --output text 2>/dev/null |
+    while read ID STATUS TYPE
+    do
+        printf "%-15s %-15s %-30s %-20s %-15s\n" \
+        "$REGION" "EBS" "$ID" "$STATUS" "$TYPE"
+    done
+
+    # Elastic IP
+    aws ec2 describe-addresses \
+      --region "$REGION" \
+      --query 'Addresses[].[PublicIp,AssociationId]' \
+      --output text 2>/dev/null |
+    while read IP ASSOCIATION
+    do
+        if [ -n "$IP" ]; then
+            STATUS="ASSOCIATED"
+            [ "$ASSOCIATION" = "None" ] && STATUS="UNASSOCIATED"
+
+            printf "%-15s %-15s %-30s %-20s %-15s\n" \
+            "$REGION" "Elastic IP" "$IP" "$STATUS" "Public IP"
+        fi
+    done
+
+done
+
+# S3
+aws s3api list-buckets \
+  --query 'Buckets[].Name' \
+  --output text 2>/dev/null |
+tr '\t' '\n' |
+while read BUCKET
+do
+    [ -n "$BUCKET" ] && printf "%-15s %-15s %-30s %-20s %-15s\n" \
+    "GLOBAL" "S3" "$BUCKET" "ACTIVE" "Bucket"
+done
+
+echo "======================================================================"
+echo "                         SCAN COMPLETE"
+echo "======================================================================"
