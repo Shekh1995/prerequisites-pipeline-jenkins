@@ -29,6 +29,7 @@ add-apt-repository --yes --update ppa:ansible/ansible
 apt install ansible
 
 ansible --version
+
 ----------------------------------------------------------
 Part 3 Setup n number of target machines (2)/ container(2)Login to Target and setup target 1 
 
@@ -59,7 +60,8 @@ passwd root
 Admin
 Admin
 
-Part 4 Perform the same all steps with target 2 and so on
+--------- Part 4 ---------------
+Perform the same all steps with target 2 and so on
 Step 10 
 
 Part 5  
