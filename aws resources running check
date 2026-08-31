@@ -1,143 +1,248 @@
 #!/bin/bash
 
-echo "======================================================================"
-echo "                  AWS RESOURCE INVENTORY"
-echo "======================================================================"
+# ============================================================
+# AWS ACTIVE RESOURCE CHECK
+# Run from AWS CloudShell
+# ============================================================
 
-printf "%-15s %-15s %-30s %-20s %-15s\n" \
-"REGION" "SERVICE" "RESOURCE" "STATUS" "TYPE"
+set -u
 
-echo "----------------------------------------------------------------------"
+echo
+echo "============================================================"
+echo "          AWS ACTIVE RESOURCE REPORT"
+echo "============================================================"
+echo
+
+ACCOUNT_ID=$(aws sts get-caller-identity \
+  --query Account \
+  --output text 2>/dev/null)
+
+echo "AWS Account : $ACCOUNT_ID"
+echo "Generated   : $(date)"
+echo
+
+# ------------------------------------------------------------
+# TABLE HEADER
+# ------------------------------------------------------------
+
+printf "%-20s %-12s %-12s %-50s\n" \
+"REGION" "SERVICE" "COUNT" "RESOURCE"
+
+echo "------------------------------------------------------------------------------------------"
+
+# ------------------------------------------------------------
+# REGIONS
+# ------------------------------------------------------------
 
 REGIONS=$(aws ec2 describe-regions \
   --query 'Regions[].RegionName' \
   --output text)
 
+# ------------------------------------------------------------
+# CHECK EACH REGION
+# ------------------------------------------------------------
+
 for REGION in $REGIONS
 do
 
-    # EC2
-    aws ec2 describe-instances \
-      --region "$REGION" \
-      --filters Name=instance-state-name,Values=running \
-      --query 'Reservations[].Instances[].[InstanceId,State.Name,InstanceType]' \
-      --output text 2>/dev/null |
-    while read ID STATUS TYPE
-    do
-        printf "%-15s %-15s %-30s %-20s %-15s\n" \
-        "$REGION" "EC2" "$ID" "$STATUS" "$TYPE"
-    done
+    # ========================================================
+    # EC2 RUNNING INSTANCES
+    # ========================================================
 
-    # RDS
-    aws rds describe-db-instances \
+    EC2=$(aws ec2 describe-instances \
       --region "$REGION" \
-      --query 'DBInstances[].[DBInstanceIdentifier,DBInstanceStatus,Engine]' \
-      --output text 2>/dev/null |
-    while read NAME STATUS TYPE
-    do
-        printf "%-15s %-15s %-30s %-20s %-15s\n" \
-        "$REGION" "RDS" "$NAME" "$STATUS" "$TYPE"
-    done
+      --filters "Name=instance-state-name,Values=running" \
+      --query 'Reservations[].Instances[].InstanceId' \
+      --output text 2>/dev/null)
 
-    # Lambda
-    aws lambda list-functions \
+    if [ -n "$EC2" ] && [ "$EC2" != "None" ]; then
+        COUNT=$(echo "$EC2" | wc -w)
+
+        for ID in $EC2
+        do
+            TYPE=$(aws ec2 describe-instances \
+              --region "$REGION" \
+              --instance-ids "$ID" \
+              --query 'Reservations[0].Instances[0].InstanceType' \
+              --output text)
+
+            printf "%-20s %-12s %-12s %-50s\n" \
+            "$REGION" "EC2" "$COUNT" "$ID ($TYPE)"
+        done
+    fi
+
+    # ========================================================
+    # RDS DATABASES
+    # ========================================================
+
+    RDS=$(aws rds describe-db-instances \
       --region "$REGION" \
-      --query 'Functions[].[FunctionName,Runtime]' \
-      --output text 2>/dev/null |
-    while read NAME TYPE
-    do
-        printf "%-15s %-15s %-30s %-20s %-15s\n" \
-        "$REGION" "Lambda" "$NAME" "ACTIVE" "$TYPE"
-    done
+      --query 'DBInstances[?DBInstanceStatus==`available`].DBInstanceIdentifier' \
+      --output text 2>/dev/null)
 
-    # EKS
-    aws eks list-clusters \
+    if [ -n "$RDS" ] && [ "$RDS" != "None" ]; then
+        COUNT=$(echo "$RDS" | wc -w)
+
+        for DB in $RDS
+        do
+            printf "%-20s %-12s %-12s %-50s\n" \
+            "$REGION" "RDS" "$COUNT" "$DB"
+        done
+    fi
+
+    # ========================================================
+    # EKS CLUSTERS
+    # ========================================================
+
+    EKS=$(aws eks list-clusters \
       --region "$REGION" \
       --query 'clusters[]' \
-      --output text 2>/dev/null |
-    tr '\t' '\n' |
-    while read NAME
-    do
-        [ -n "$NAME" ] && printf "%-15s %-15s %-30s %-20s %-15s\n" \
-        "$REGION" "EKS" "$NAME" "ACTIVE" "Cluster"
-    done
+      --output text 2>/dev/null)
 
-    # ECS
-    aws ecs list-clusters \
+    if [ -n "$EKS" ] && [ "$EKS" != "None" ]; then
+        COUNT=$(echo "$EKS" | wc -w)
+
+        for CLUSTER in $EKS
+        do
+            printf "%-20s %-12s %-12s %-50s\n" \
+            "$REGION" "EKS" "$COUNT" "$CLUSTER"
+        done
+    fi
+
+    # ========================================================
+    # ECS CLUSTERS
+    # ========================================================
+
+    ECS=$(aws ecs list-clusters \
       --region "$REGION" \
       --query 'clusterArns[]' \
-      --output text 2>/dev/null |
-    tr '\t' '\n' |
-    while read ARN
-    do
-        NAME=$(basename "$ARN")
-        [ -n "$NAME" ] && printf "%-15s %-15s %-30s %-20s %-15s\n" \
-        "$REGION" "ECS" "$NAME" "ACTIVE" "Cluster"
-    done
+      --output text 2>/dev/null)
 
-    # Load Balancers
-    aws elbv2 describe-load-balancers \
+    if [ -n "$ECS" ] && [ "$ECS" != "None" ]; then
+
+        for CLUSTER in $ECS
+        do
+            RUNNING=$(aws ecs list-tasks \
+              --region "$REGION" \
+              --cluster "$CLUSTER" \
+              --desired-status RUNNING \
+              --query 'taskArns[]' \
+              --output text 2>/dev/null)
+
+            if [ -n "$RUNNING" ] && [ "$RUNNING" != "None" ]; then
+                COUNT=$(echo "$RUNNING" | wc -w)
+
+                NAME=$(basename "$CLUSTER")
+
+                printf "%-20s %-12s %-12s %-50s\n" \
+                "$REGION" "ECS" "$COUNT" "$NAME"
+            fi
+        done
+    fi
+
+    # ========================================================
+    # LAMBDA FUNCTIONS
+    # ========================================================
+
+    LAMBDA=$(aws lambda list-functions \
       --region "$REGION" \
-      --query 'LoadBalancers[].[LoadBalancerName,State.Code,Type]' \
-      --output text 2>/dev/null |
-    while read NAME STATUS TYPE
-    do
-        printf "%-15s %-15s %-30s %-20s %-15s\n" \
-        "$REGION" "LoadBalancer" "$NAME" "$STATUS" "$TYPE"
-    done
+      --query 'Functions[].FunctionName' \
+      --output text 2>/dev/null)
 
-    # NAT Gateways
-    aws ec2 describe-nat-gateways \
+    if [ -n "$LAMBDA" ] && [ "$LAMBDA" != "None" ]; then
+        COUNT=$(echo "$LAMBDA" | wc -w)
+
+        printf "%-20s %-12s %-12s %-50s\n" \
+        "$REGION" "Lambda" "$COUNT" "Functions"
+    fi
+
+    # ========================================================
+    # LOAD BALANCERS
+    # ========================================================
+
+    ALB=$(aws elbv2 describe-load-balancers \
       --region "$REGION" \
-      --filter Name=state,Values=available,pending \
-      --query 'NatGateways[].[NatGatewayId,State]' \
-      --output text 2>/dev/null |
-    while read ID STATUS
-    do
-        printf "%-15s %-15s %-30s %-20s %-15s\n" \
-        "$REGION" "NAT Gateway" "$ID" "$STATUS" "NAT"
-    done
+      --query 'LoadBalancers[].LoadBalancerName' \
+      --output text 2>/dev/null)
 
-    # EBS
-    aws ec2 describe-volumes \
+    if [ -n "$ALB" ] && [ "$ALB" != "None" ]; then
+        COUNT=$(echo "$ALB" | wc -w)
+
+        for LB in $ALB
+        do
+            printf "%-20s %-12s %-12s %-50s\n" \
+            "$REGION" "ALB/NLB" "$COUNT" "$LB"
+        done
+    fi
+
+    # ========================================================
+    # NAT GATEWAYS
+    # ========================================================
+
+    NAT=$(aws ec2 describe-nat-gateways \
       --region "$REGION" \
-      --query 'Volumes[].[VolumeId,State,VolumeType]' \
-      --output text 2>/dev/null |
-    while read ID STATUS TYPE
-    do
-        printf "%-15s %-15s %-30s %-20s %-15s\n" \
-        "$REGION" "EBS" "$ID" "$STATUS" "$TYPE"
-    done
+      --filter Name=state,Values=available \
+      --query 'NatGateways[].NatGatewayId' \
+      --output text 2>/dev/null)
 
-    # Elastic IP
-    aws ec2 describe-addresses \
+    if [ -n "$NAT" ] && [ "$NAT" != "None" ]; then
+        COUNT=$(echo "$NAT" | wc -w)
+
+        for ID in $NAT
+        do
+            printf "%-20s %-12s %-12s %-50s\n" \
+            "$REGION" "NAT Gateway" "$COUNT" "$ID"
+        done
+    fi
+
+    # ========================================================
+    # ELASTIC IPs
+    # ========================================================
+
+    EIP=$(aws ec2 describe-addresses \
       --region "$REGION" \
-      --query 'Addresses[].[PublicIp,AssociationId]' \
-      --output text 2>/dev/null |
-    while read IP ASSOCIATION
-    do
-        if [ -n "$IP" ]; then
-            STATUS="ASSOCIATED"
-            [ "$ASSOCIATION" = "None" ] && STATUS="UNASSOCIATED"
+      --query 'Addresses[?AssociationId!=null].PublicIp' \
+      --output text 2>/dev/null)
 
-            printf "%-15s %-15s %-30s %-20s %-15s\n" \
-            "$REGION" "Elastic IP" "$IP" "$STATUS" "Public IP"
-        fi
-    done
+    if [ -n "$EIP" ] && [ "$EIP" != "None" ]; then
+        COUNT=$(echo "$EIP" | wc -w)
+
+        for IP in $EIP
+        do
+            printf "%-20s %-12s %-12s %-50s\n" \
+            "$REGION" "Elastic IP" "$COUNT" "$IP"
+        done
+    fi
 
 done
 
-# S3
-aws s3api list-buckets \
+# ============================================================
+# S3 BUCKETS
+# ============================================================
+
+echo
+echo "------------------------------------------------------------------------------------------"
+
+BUCKETS=$(aws s3api list-buckets \
   --query 'Buckets[].Name' \
-  --output text 2>/dev/null |
-tr '\t' '\n' |
-while read BUCKET
-do
-    [ -n "$BUCKET" ] && printf "%-15s %-15s %-30s %-20s %-15s\n" \
-    "GLOBAL" "S3" "$BUCKET" "ACTIVE" "Bucket"
-done
+  --output text 2>/dev/null)
 
-echo "======================================================================"
-echo "                         SCAN COMPLETE"
-echo "======================================================================"
+if [ -n "$BUCKETS" ] && [ "$BUCKETS" != "None" ]; then
+
+    COUNT=$(echo "$BUCKETS" | wc -w)
+
+    printf "%-20s %-12s %-12s %-50s\n" \
+    "GLOBAL" "S3" "$COUNT" "Buckets"
+
+    for BUCKET in $BUCKETS
+    do
+        printf "%-20s %-12s %-12s %-50s\n" \
+        "GLOBAL" "S3" "-" "$BUCKET"
+    done
+fi
+
+echo
+echo "============================================================"
+echo "                 REPORT COMPLETED"
+echo "============================================================"
+echo
