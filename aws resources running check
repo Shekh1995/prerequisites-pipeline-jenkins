@@ -1,248 +1,913 @@
 #!/bin/bash
 
 # ============================================================
-# AWS ACTIVE RESOURCE CHECK
-# Run from AWS CloudShell
+# AWS BILLABLE RESOURCE AUDIT
+# ============================================================
+# Purpose:
+#   Find AWS resources that may be causing billing.
+#
+# Run from:
+#   AWS CloudShell
+#
+# Requirements:
+#   AWS CLI
+#   jq
+#
+# Output:
+#   aws-billing-resource-audit-YYYYMMDD-HHMMSS.csv
+#   aws-billing-resource-audit-YYYYMMDD-HHMMSS.txt
 # ============================================================
 
 set -u
 
-echo
-echo "============================================================"
-echo "          AWS ACTIVE RESOURCE REPORT"
-echo "============================================================"
-echo
+TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
+
+CSV_FILE="aws-billing-resource-audit-${TIMESTAMP}.csv"
+TXT_FILE="aws-billing-resource-audit-${TIMESTAMP}.txt"
 
 ACCOUNT_ID=$(aws sts get-caller-identity \
-  --query Account \
-  --output text 2>/dev/null)
+    --query Account \
+    --output text)
 
-echo "AWS Account : $ACCOUNT_ID"
-echo "Generated   : $(date)"
-echo
+CALLER=$(aws sts get-caller-identity \
+    --query Arn \
+    --output text)
+
+echo "============================================================"
+echo "AWS BILLING RESOURCE AUDIT"
+echo "============================================================"
+echo "Account : $ACCOUNT_ID"
+echo "Identity: $CALLER"
+echo "Date    : $(date)"
+echo "============================================================"
+
+echo "Resource Type,Region,Resource ID,Name,State,Details" > "$CSV_FILE"
+
+echo "AWS BILLING RESOURCE AUDIT" > "$TXT_FILE"
+echo "Account: $ACCOUNT_ID" >> "$TXT_FILE"
+echo "Identity: $CALLER" >> "$TXT_FILE"
+echo "Date: $(date)" >> "$TXT_FILE"
+echo "" >> "$TXT_FILE"
+
 
 # ------------------------------------------------------------
-# TABLE HEADER
+# CSV helper
 # ------------------------------------------------------------
 
-printf "%-20s %-12s %-12s %-50s\n" \
-"REGION" "SERVICE" "COUNT" "RESOURCE"
+csv_escape()
+{
+    echo "$1" | sed 's/"/""/g'
+}
 
-echo "------------------------------------------------------------------------------------------"
+
+add_csv()
+{
+    TYPE="$1"
+    REGION="$2"
+    ID="$3"
+    NAME="$4"
+    STATE="$5"
+    DETAILS="$6"
+
+    echo "\"$(csv_escape "$TYPE")\",\"$(csv_escape "$REGION")\",\"$(csv_escape "$ID")\",\"$(csv_escape "$NAME")\",\"$(csv_escape "$STATE")\",\"$(csv_escape "$DETAILS")\"" >> "$CSV_FILE"
+}
+
 
 # ------------------------------------------------------------
-# REGIONS
+# REGION LIST
 # ------------------------------------------------------------
+
+echo ""
+echo "Getting AWS regions..."
 
 REGIONS=$(aws ec2 describe-regions \
-  --query 'Regions[].RegionName' \
-  --output text)
+    --all-regions \
+    --query "Regions[?OptInStatus=='opt-in-not-required' || OptInStatus=='opted-in'].RegionName" \
+    --output text)
 
-# ------------------------------------------------------------
-# CHECK EACH REGION
-# ------------------------------------------------------------
+echo "Regions found:"
+echo "$REGIONS"
+
+
+# ============================================================
+# REGION LOOP
+# ============================================================
 
 for REGION in $REGIONS
 do
 
-    # ========================================================
-    # EC2 RUNNING INSTANCES
-    # ========================================================
+    echo ""
+    echo "============================================================"
+    echo "REGION: $REGION"
+    echo "============================================================"
 
-    EC2=$(aws ec2 describe-instances \
-      --region "$REGION" \
-      --filters "Name=instance-state-name,Values=running" \
-      --query 'Reservations[].Instances[].InstanceId' \
-      --output text 2>/dev/null)
+    echo "" >> "$TXT_FILE"
+    echo "============================================================" >> "$TXT_FILE"
+    echo "REGION: $REGION" >> "$TXT_FILE"
+    echo "============================================================" >> "$TXT_FILE"
 
-    if [ -n "$EC2" ] && [ "$EC2" != "None" ]; then
-        COUNT=$(echo "$EC2" | wc -w)
-
-        for ID in $EC2
-        do
-            TYPE=$(aws ec2 describe-instances \
-              --region "$REGION" \
-              --instance-ids "$ID" \
-              --query 'Reservations[0].Instances[0].InstanceType' \
-              --output text)
-
-            printf "%-20s %-12s %-12s %-50s\n" \
-            "$REGION" "EC2" "$COUNT" "$ID ($TYPE)"
-        done
-    fi
 
     # ========================================================
-    # RDS DATABASES
+    # EC2 INSTANCES
     # ========================================================
 
-    RDS=$(aws rds describe-db-instances \
-      --region "$REGION" \
-      --query 'DBInstances[?DBInstanceStatus==`available`].DBInstanceIdentifier' \
-      --output text 2>/dev/null)
+    echo "[EC2] Checking instances..."
 
-    if [ -n "$RDS" ] && [ "$RDS" != "None" ]; then
-        COUNT=$(echo "$RDS" | wc -w)
+    aws ec2 describe-instances \
+        --region "$REGION" \
+        --filters "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+        --query 'Reservations[].Instances[]' \
+        --output json 2>/dev/null |
+    jq -r --arg region "$REGION" '
+        .[] |
+        [
+            .InstanceId,
+            ((.Tags // []) | map(select(.Key=="Name")) | .[0].Value // ""),
+            .State.Name,
+            (.InstanceType // ""),
+            (.PrivateIpAddress // ""),
+            (.PublicIpAddress // ""),
+            (.Placement.AvailabilityZone // "")
+        ] |
+        @tsv
+    ' |
+    while IFS=$'\t' read -r ID NAME STATE TYPE PRIVATE PUBLIC AZ
+    do
+        add_csv \
+            "EC2 Instance" \
+            "$REGION" \
+            "$ID" \
+            "$NAME" \
+            "$STATE" \
+            "Type=$TYPE PrivateIP=$PRIVATE PublicIP=$PUBLIC AZ=$AZ"
 
-        for DB in $RDS
-        do
-            printf "%-20s %-12s %-12s %-50s\n" \
-            "$REGION" "RDS" "$COUNT" "$DB"
-        done
-    fi
+        echo "EC2 Instance | $REGION | $ID | $NAME | $STATE | $TYPE" >> "$TXT_FILE"
+    done
 
-    # ========================================================
-    # EKS CLUSTERS
-    # ========================================================
-
-    EKS=$(aws eks list-clusters \
-      --region "$REGION" \
-      --query 'clusters[]' \
-      --output text 2>/dev/null)
-
-    if [ -n "$EKS" ] && [ "$EKS" != "None" ]; then
-        COUNT=$(echo "$EKS" | wc -w)
-
-        for CLUSTER in $EKS
-        do
-            printf "%-20s %-12s %-12s %-50s\n" \
-            "$REGION" "EKS" "$COUNT" "$CLUSTER"
-        done
-    fi
-
-    # ========================================================
-    # ECS CLUSTERS
-    # ========================================================
-
-    ECS=$(aws ecs list-clusters \
-      --region "$REGION" \
-      --query 'clusterArns[]' \
-      --output text 2>/dev/null)
-
-    if [ -n "$ECS" ] && [ "$ECS" != "None" ]; then
-
-        for CLUSTER in $ECS
-        do
-            RUNNING=$(aws ecs list-tasks \
-              --region "$REGION" \
-              --cluster "$CLUSTER" \
-              --desired-status RUNNING \
-              --query 'taskArns[]' \
-              --output text 2>/dev/null)
-
-            if [ -n "$RUNNING" ] && [ "$RUNNING" != "None" ]; then
-                COUNT=$(echo "$RUNNING" | wc -w)
-
-                NAME=$(basename "$CLUSTER")
-
-                printf "%-20s %-12s %-12s %-50s\n" \
-                "$REGION" "ECS" "$COUNT" "$NAME"
-            fi
-        done
-    fi
 
     # ========================================================
-    # LAMBDA FUNCTIONS
+    # EBS VOLUMES
     # ========================================================
 
-    LAMBDA=$(aws lambda list-functions \
-      --region "$REGION" \
-      --query 'Functions[].FunctionName' \
-      --output text 2>/dev/null)
+    echo "[EBS] Checking volumes..."
 
-    if [ -n "$LAMBDA" ] && [ "$LAMBDA" != "None" ]; then
-        COUNT=$(echo "$LAMBDA" | wc -w)
+    aws ec2 describe-volumes \
+        --region "$REGION" \
+        --filters "Name=status,Values=available,in-use" \
+        --query 'Volumes[]' \
+        --output json 2>/dev/null |
+    jq -r '
+        .[] |
+        [
+            .VolumeId,
+            .State,
+            (.Size|tostring),
+            .VolumeType,
+            (.Encrypted|tostring),
+            (.AvailabilityZone)
+        ] |
+        @tsv
+    ' |
+    while IFS=$'\t' read -r ID STATE SIZE TYPE ENCRYPTED AZ
+    do
+        add_csv \
+            "EBS Volume" \
+            "$REGION" \
+            "$ID" \
+            "" \
+            "$STATE" \
+            "Size=${SIZE}GiB Type=$TYPE Encrypted=$ENCRYPTED AZ=$AZ"
 
-        printf "%-20s %-12s %-12s %-50s\n" \
-        "$REGION" "Lambda" "$COUNT" "Functions"
-    fi
+        echo "EBS Volume | $REGION | $ID | $STATE | ${SIZE}GiB | $TYPE" >> "$TXT_FILE"
+    done
 
-    # ========================================================
-    # LOAD BALANCERS
-    # ========================================================
-
-    ALB=$(aws elbv2 describe-load-balancers \
-      --region "$REGION" \
-      --query 'LoadBalancers[].LoadBalancerName' \
-      --output text 2>/dev/null)
-
-    if [ -n "$ALB" ] && [ "$ALB" != "None" ]; then
-        COUNT=$(echo "$ALB" | wc -w)
-
-        for LB in $ALB
-        do
-            printf "%-20s %-12s %-12s %-50s\n" \
-            "$REGION" "ALB/NLB" "$COUNT" "$LB"
-        done
-    fi
-
-    # ========================================================
-    # NAT GATEWAYS
-    # ========================================================
-
-    NAT=$(aws ec2 describe-nat-gateways \
-      --region "$REGION" \
-      --filter Name=state,Values=available \
-      --query 'NatGateways[].NatGatewayId' \
-      --output text 2>/dev/null)
-
-    if [ -n "$NAT" ] && [ "$NAT" != "None" ]; then
-        COUNT=$(echo "$NAT" | wc -w)
-
-        for ID in $NAT
-        do
-            printf "%-20s %-12s %-12s %-50s\n" \
-            "$REGION" "NAT Gateway" "$COUNT" "$ID"
-        done
-    fi
 
     # ========================================================
     # ELASTIC IPs
     # ========================================================
 
-    EIP=$(aws ec2 describe-addresses \
-      --region "$REGION" \
-      --query 'Addresses[?AssociationId!=null].PublicIp' \
-      --output text 2>/dev/null)
+    echo "[EIP] Checking Elastic IPs..."
 
-    if [ -n "$EIP" ] && [ "$EIP" != "None" ]; then
-        COUNT=$(echo "$EIP" | wc -w)
+    aws ec2 describe-addresses \
+        --region "$REGION" \
+        --output json 2>/dev/null |
+    jq -r '
+        .Addresses[] |
+        [
+            (.AllocationId // ""),
+            (.PublicIp // ""),
+            (.AssociationId // ""),
+            (.InstanceId // ""),
+            (.NetworkInterfaceId // "")
+        ] |
+        @tsv
+    ' |
+    while IFS=$'\t' read -r ALLOCATION PUBLIC ASSOC INSTANCE ENI
+    do
+        if [ -n "$INSTANCE" ]; then
+            STATE="Associated"
+        else
+            STATE="Unassociated"
+        fi
 
-        for IP in $EIP
+        add_csv \
+            "Elastic IP" \
+            "$REGION" \
+            "$ALLOCATION" \
+            "$PUBLIC" \
+            "$STATE" \
+            "Instance=$INSTANCE ENI=$ENI"
+
+        echo "Elastic IP | $REGION | $PUBLIC | $STATE | Instance=$INSTANCE" >> "$TXT_FILE"
+    done
+
+
+    # ========================================================
+    # NAT GATEWAYS
+    # ========================================================
+
+    echo "[NAT] Checking NAT Gateways..."
+
+    aws ec2 describe-nat-gateways \
+        --region "$REGION" \
+        --filter "Name=state,Values=available,pending" \
+        --output json 2>/dev/null |
+    jq -r '
+        .NatGateways[] |
+        [
+            .NatGatewayId,
+            .State,
+            .VpcId,
+            .SubnetId
+        ] |
+        @tsv
+    ' |
+    while IFS=$'\t' read -r ID STATE VPC SUBNET
+    do
+        add_csv \
+            "NAT Gateway" \
+            "$REGION" \
+            "$ID" \
+            "" \
+            "$STATE" \
+            "VPC=$VPC Subnet=$SUBNET"
+
+        echo "NAT Gateway | $REGION | $ID | $STATE | VPC=$VPC" >> "$TXT_FILE"
+    done
+
+
+    # ========================================================
+    # APPLICATION / NETWORK LOAD BALANCERS
+    # ========================================================
+
+    echo "[ELB] Checking Load Balancers..."
+
+    aws elbv2 describe-load-balancers \
+        --region "$REGION" \
+        --output json 2>/dev/null |
+    jq -r '
+        .LoadBalancers[] |
+        [
+            .LoadBalancerArn,
+            .LoadBalancerName,
+            .Type,
+            .State.Code,
+            .Scheme,
+            .VpcId
+        ] |
+        @tsv
+    ' |
+    while IFS=$'\t' read -r ARN NAME TYPE STATE SCHEME VPC
+    do
+        add_csv \
+            "Load Balancer" \
+            "$REGION" \
+            "$ARN" \
+            "$NAME" \
+            "$STATE" \
+            "Type=$TYPE Scheme=$SCHEME VPC=$VPC"
+
+        echo "Load Balancer | $REGION | $NAME | $STATE | $TYPE" >> "$TXT_FILE"
+    done
+
+
+    # ========================================================
+    # RDS
+    # ========================================================
+
+    echo "[RDS] Checking databases..."
+
+    aws rds describe-db-instances \
+        --region "$REGION" \
+        --output json 2>/dev/null |
+    jq -r '
+        .DBInstances[] |
+        [
+            .DBInstanceIdentifier,
+            .DBInstanceStatus,
+            .DBInstanceClass,
+            (.Engine // ""),
+            (.AllocatedStorage|tostring),
+            (.MultiAZ|tostring),
+            (.PubliclyAccessible|tostring)
+        ] |
+        @tsv
+    ' |
+    while IFS=$'\t' read -r ID STATE CLASS ENGINE STORAGE MULTIAZ PUBLIC
+    do
+        add_csv \
+            "RDS Database" \
+            "$REGION" \
+            "$ID" \
+            "$ID" \
+            "$STATE" \
+            "Class=$CLASS Engine=$ENGINE Storage=${STORAGE}GiB MultiAZ=$MULTIAZ Public=$PUBLIC"
+
+        echo "RDS | $REGION | $ID | $STATE | $CLASS | $ENGINE" >> "$TXT_FILE"
+    done
+
+
+    # ========================================================
+    # RDS AURORA CLUSTERS
+    # ========================================================
+
+    echo "[RDS] Checking Aurora clusters..."
+
+    aws rds describe-db-clusters \
+        --region "$REGION" \
+        --output json 2>/dev/null |
+    jq -r '
+        .DBClusters[] |
+        [
+            .DBClusterIdentifier,
+            .Status,
+            .Engine,
+            (.EngineMode // ""),
+            (.MultiAZ|tostring)
+        ] |
+        @tsv
+    ' |
+    while IFS=$'\t' read -r ID STATE ENGINE MODE MULTIAZ
+    do
+        add_csv \
+            "RDS/Aurora Cluster" \
+            "$REGION" \
+            "$ID" \
+            "$ID" \
+            "$STATE" \
+            "Engine=$ENGINE Mode=$MODE MultiAZ=$MULTIAZ"
+
+        echo "Aurora Cluster | $REGION | $ID | $STATE | $ENGINE" >> "$TXT_FILE"
+    done
+
+
+    # ========================================================
+    # LAMBDA
+    # ========================================================
+
+    echo "[Lambda] Checking functions..."
+
+    aws lambda list-functions \
+        --region "$REGION" \
+        --output json 2>/dev/null |
+    jq -r '
+        .Functions[] |
+        [
+            .FunctionName,
+            .Runtime,
+            (.MemorySize|tostring),
+            (.Timeout|tostring),
+            (.LastModified)
+        ] |
+        @tsv
+    ' |
+    while IFS=$'\t' read -r NAME RUNTIME MEMORY TIMEOUT MODIFIED
+    do
+        add_csv \
+            "Lambda Function" \
+            "$REGION" \
+            "$NAME" \
+            "$NAME" \
+            "Active" \
+            "Runtime=$RUNTIME Memory=${MEMORY}MB Timeout=${TIMEOUT}s LastModified=$MODIFIED"
+
+        echo "Lambda | $REGION | $NAME | $RUNTIME" >> "$TXT_FILE"
+    done
+
+
+    # ========================================================
+    # EKS CLUSTERS
+    # ========================================================
+
+    echo "[EKS] Checking clusters..."
+
+    aws eks list-clusters \
+        --region "$REGION" \
+        --output text 2>/dev/null |
+    tr '\t' '\n' |
+    while read -r CLUSTER
+    do
+        [ -z "$CLUSTER" ] && continue
+
+        STATUS=$(aws eks describe-cluster \
+            --region "$REGION" \
+            --name "$CLUSTER" \
+            --query "cluster.status" \
+            --output text 2>/dev/null)
+
+        VERSION=$(aws eks describe-cluster \
+            --region "$REGION" \
+            --name "$CLUSTER" \
+            --query "cluster.version" \
+            --output text 2>/dev/null)
+
+        add_csv \
+            "EKS Cluster" \
+            "$REGION" \
+            "$CLUSTER" \
+            "$CLUSTER" \
+            "$STATUS" \
+            "KubernetesVersion=$VERSION"
+
+        echo "EKS Cluster | $REGION | $CLUSTER | $STATUS | Kubernetes=$VERSION" >> "$TXT_FILE"
+    done
+
+
+    # ========================================================
+    # EKS NODE GROUPS
+    # ========================================================
+
+    echo "[EKS] Checking node groups..."
+
+    CLUSTERS=$(aws eks list-clusters \
+        --region "$REGION" \
+        --query "clusters[]" \
+        --output text 2>/dev/null)
+
+    for CLUSTER in $CLUSTERS
+    do
+
+        NODEGROUPS=$(aws eks list-nodegroups \
+            --region "$REGION" \
+            --cluster-name "$CLUSTER" \
+            --query "nodegroups[]" \
+            --output text 2>/dev/null)
+
+        for NG in $NODEGROUPS
         do
-            printf "%-20s %-12s %-12s %-50s\n" \
-            "$REGION" "Elastic IP" "$COUNT" "$IP"
+
+            STATUS=$(aws eks describe-nodegroup \
+                --region "$REGION" \
+                --cluster-name "$CLUSTER" \
+                --nodegroup-name "$NG" \
+                --query "nodegroup.status" \
+                --output text 2>/dev/null)
+
+            DESIRED=$(aws eks describe-nodegroup \
+                --region "$REGION" \
+                --cluster-name "$CLUSTER" \
+                --nodegroup-name "$NG" \
+                --query "nodegroup.scalingConfig.desiredSize" \
+                --output text 2>/dev/null)
+
+            INSTANCE_TYPES=$(aws eks describe-nodegroup \
+                --region "$REGION" \
+                --cluster-name "$CLUSTER" \
+                --nodegroup-name "$NG" \
+                --query "nodegroup.instanceTypes[]" \
+                --output text 2>/dev/null)
+
+            add_csv \
+                "EKS Node Group" \
+                "$REGION" \
+                "$NG" \
+                "$NG" \
+                "$STATUS" \
+                "Cluster=$CLUSTER Desired=$DESIRED InstanceTypes=$INSTANCE_TYPES"
+
+            echo "EKS NodeGroup | $REGION | $CLUSTER | $NG | $STATUS | $INSTANCE_TYPES" >> "$TXT_FILE"
+
         done
+    done
+
+
+    # ========================================================
+    # S3
+    # ========================================================
+
+    if [ "$REGION" = "$(aws configure get region 2>/dev/null)" ] || true
+    then
+
+        echo "[S3] Checking buckets..."
+
+        aws s3api list-buckets \
+            --query "Buckets[]" \
+            --output json 2>/dev/null |
+        jq -r '
+            .[] |
+            [
+                .Name,
+                .CreationDate
+            ] |
+            @tsv
+        ' |
+        while IFS=$'\t' read -r BUCKET CREATED
+        do
+
+            BUCKET_REGION=$(aws s3api get-bucket-location \
+                --bucket "$BUCKET" \
+                --query "LocationConstraint" \
+                --output text 2>/dev/null)
+
+            if [ "$BUCKET_REGION" = "None" ]; then
+                BUCKET_REGION="us-east-1"
+            fi
+
+            if [ "$BUCKET_REGION" = "$REGION" ]; then
+
+                add_csv \
+                    "S3 Bucket" \
+                    "$REGION" \
+                    "$BUCKET" \
+                    "$BUCKET" \
+                    "Exists" \
+                    "Created=$CREATED"
+
+                echo "S3 Bucket | $REGION | $BUCKET | Created=$CREATED" >> "$TXT_FILE"
+
+            fi
+
+        done
+
     fi
+
+
+    # ========================================================
+    # DYNAMODB
+    # ========================================================
+
+    echo "[DynamoDB] Checking tables..."
+
+    aws dynamodb list-tables \
+        --region "$REGION" \
+        --output text 2>/dev/null |
+    tr '\t' '\n' |
+    while read -r TABLE
+    do
+
+        [ -z "$TABLE" ] && continue
+
+        STATUS=$(aws dynamodb describe-table \
+            --region "$REGION" \
+            --table-name "$TABLE" \
+            --query "Table.TableStatus" \
+            --output text 2>/dev/null)
+
+        BILLING=$(aws dynamodb describe-table \
+            --region "$REGION" \
+            --table-name "$TABLE" \
+            --query "Table.BillingModeSummary.BillingMode" \
+            --output text 2>/dev/null)
+
+        add_csv \
+            "DynamoDB Table" \
+            "$REGION" \
+            "$TABLE" \
+            "$TABLE" \
+            "$STATUS" \
+            "BillingMode=$BILLING"
+
+        echo "DynamoDB | $REGION | $TABLE | $STATUS | BillingMode=$BILLING" >> "$TXT_FILE"
+
+    done
+
+
+    # ========================================================
+    # EFS
+    # ========================================================
+
+    echo "[EFS] Checking file systems..."
+
+    aws efs describe-file-systems \
+        --region "$REGION" \
+        --output json 2>/dev/null |
+    jq -r '
+        .FileSystems[] |
+        [
+            .FileSystemId,
+            .LifeCycleState,
+            (.SizeInBytes.Value|tostring),
+            (.ThroughputMode // ""),
+            (.Encrypted|tostring)
+        ] |
+        @tsv
+    ' |
+    while IFS=$'\t' read -r ID STATE SIZE THROUGHPUT ENCRYPTED
+    do
+
+        add_csv \
+            "EFS File System" \
+            "$REGION" \
+            "$ID" \
+            "" \
+            "$STATE" \
+            "SizeBytes=$SIZE ThroughputMode=$THROUGHPUT Encrypted=$ENCRYPTED"
+
+        echo "EFS | $REGION | $ID | $STATE | SizeBytes=$SIZE" >> "$TXT_FILE"
+
+    done
+
+
+    # ========================================================
+    # ELASTICACHE
+    # ========================================================
+
+    echo "[ElastiCache] Checking clusters..."
+
+    aws elasticache describe-cache-clusters \
+        --region "$REGION" \
+        --show-cache-node-info \
+        --output json 2>/dev/null |
+    jq -r '
+        .CacheClusters[] |
+        [
+            .CacheClusterId,
+            .CacheClusterStatus,
+            .CacheNodeType,
+            (.NumCacheNodes|tostring),
+            .Engine
+        ] |
+        @tsv
+    ' |
+    while IFS=$'\t' read -r ID STATE TYPE NODES ENGINE
+    do
+
+        add_csv \
+            "ElastiCache" \
+            "$REGION" \
+            "$ID" \
+            "$ID" \
+            "$STATE" \
+            "NodeType=$TYPE Nodes=$NODES Engine=$ENGINE"
+
+        echo "ElastiCache | $REGION | $ID | $STATE | $TYPE | $ENGINE" >> "$TXT_FILE"
+
+    done
+
+
+    # ========================================================
+    # OPENSEARCH
+    # ========================================================
+
+    echo "[OpenSearch] Checking domains..."
+
+    aws opensearch list-domain-names \
+        --region "$REGION" \
+        --output json 2>/dev/null |
+    jq -r '.DomainNames[].DomainName' |
+    while read -r DOMAIN
+    do
+
+        [ -z "$DOMAIN" ] && continue
+
+        STATUS=$(aws opensearch describe-domain \
+            --region "$REGION" \
+            --domain-name "$DOMAIN" \
+            --query "DomainStatus.Processing" \
+            --output text 2>/dev/null)
+
+        add_csv \
+            "OpenSearch Domain" \
+            "$REGION" \
+            "$DOMAIN" \
+            "$DOMAIN" \
+            "$STATUS" \
+            "OpenSearch domain"
+
+        echo "OpenSearch | $REGION | $DOMAIN | Processing=$STATUS" >> "$TXT_FILE"
+
+    done
+
+
+    # ========================================================
+    # VPC ENDPOINTS
+    # ========================================================
+
+    echo "[VPC] Checking endpoints..."
+
+    aws ec2 describe-vpc-endpoints \
+        --region "$REGION" \
+        --output json 2>/dev/null |
+    jq -r '
+        .VpcEndpoints[] |
+        [
+            .VpcEndpointId,
+            .VpcEndpointType,
+            .State,
+            .VpcId,
+            (.ServiceName // "")
+        ] |
+        @tsv
+    ' |
+    while IFS=$'\t' read -r ID TYPE STATE VPC SERVICE
+    do
+
+        add_csv \
+            "VPC Endpoint" \
+            "$REGION" \
+            "$ID" \
+            "" \
+            "$STATE" \
+            "Type=$TYPE VPC=$VPC Service=$SERVICE"
+
+        echo "VPC Endpoint | $REGION | $ID | $STATE | $TYPE | $SERVICE" >> "$TXT_FILE"
+
+    done
+
+
+    # ========================================================
+    # EBS SNAPSHOTS OWNED BY ACCOUNT
+    # ========================================================
+
+    echo "[Snapshots] Checking EBS snapshots..."
+
+    aws ec2 describe-snapshots \
+        --region "$REGION" \
+        --owner-ids "$ACCOUNT_ID" \
+        --output json 2>/dev/null |
+    jq -r '
+        .Snapshots[] |
+        [
+            .SnapshotId,
+            .State,
+            (.VolumeSize|tostring),
+            (.VolumeId // ""),
+            (.StartTime // "")
+        ] |
+        @tsv
+    ' |
+    while IFS=$'\t' read -r ID STATE SIZE VOLUME START
+    do
+
+        add_csv \
+            "EBS Snapshot" \
+            "$REGION" \
+            "$ID" \
+            "" \
+            "$STATE" \
+            "Size=${SIZE}GiB Volume=$VOLUME Created=$START"
+
+        echo "EBS Snapshot | $REGION | $ID | $STATE | ${SIZE}GiB" >> "$TXT_FILE"
+
+    done
+
+
+    # ========================================================
+    # AMIs OWNED BY ACCOUNT
+    # ========================================================
+
+    echo "[AMI] Checking custom AMIs..."
+
+    aws ec2 describe-images \
+        --region "$REGION" \
+        --owners "$ACCOUNT_ID" \
+        --output json 2>/dev/null |
+    jq -r '
+        .Images[] |
+        [
+            .ImageId,
+            .Name,
+            .State,
+            (.CreationDate // "")
+        ] |
+        @tsv
+    ' |
+    while IFS=$'\t' read -r ID NAME STATE CREATED
+    do
+
+        add_csv \
+            "AMI" \
+            "$REGION" \
+            "$ID" \
+            "$NAME" \
+            "$STATE" \
+            "Created=$CREATED"
+
+        echo "AMI | $REGION | $ID | $STATE | $NAME" >> "$TXT_FILE"
+
+    done
+
+
+    # ========================================================
+    # RESOURCE GROUPS TAGGING API
+    # ========================================================
+
+    echo "[TAGGING API] Checking tagged resources..."
+
+    aws resourcegroupstaggingapi get-resources \
+        --region "$REGION" \
+        --output json 2>/dev/null |
+    jq -r '
+        .ResourceTagMappingList[] |
+        [
+            .ResourceARN,
+            (
+                (.Tags // [])
+                | map("\(.Key)=\(.Value)")
+                | join(";")
+            )
+        ] |
+        @tsv
+    ' |
+    while IFS=$'\t' read -r ARN TAGS
+    do
+
+        add_csv \
+            "Tagged Resource" \
+            "$REGION" \
+            "$ARN" \
+            "" \
+            "Exists" \
+            "Tags=$TAGS"
+
+    done
+
 
 done
 
+
 # ============================================================
-# S3 BUCKETS
+# BILLING SUMMARY
 # ============================================================
 
-echo
-echo "------------------------------------------------------------------------------------------"
-
-BUCKETS=$(aws s3api list-buckets \
-  --query 'Buckets[].Name' \
-  --output text 2>/dev/null)
-
-if [ -n "$BUCKETS" ] && [ "$BUCKETS" != "None" ]; then
-
-    COUNT=$(echo "$BUCKETS" | wc -w)
-
-    printf "%-20s %-12s %-12s %-50s\n" \
-    "GLOBAL" "S3" "$COUNT" "Buckets"
-
-    for BUCKET in $BUCKETS
-    do
-        printf "%-20s %-12s %-12s %-50s\n" \
-        "GLOBAL" "S3" "-" "$BUCKET"
-    done
-fi
-
-echo
+echo ""
 echo "============================================================"
-echo "                 REPORT COMPLETED"
+echo "COST EXPLORER SUMMARY"
 echo "============================================================"
-echo
+
+START_DATE=$(date -u -d "30 days ago" +"%Y-%m-%d")
+END_DATE=$(date -u +"%Y-%m-%d")
+
+echo "Checking last 30 days:"
+echo "$START_DATE -> $END_DATE"
+
+aws ce get-cost-and-usage \
+    --time-period Start="$START_DATE",End="$END_DATE" \
+    --granularity MONTHLY \
+    --metrics UnblendedCost \
+    --group-by Type=DIMENSION,Key=SERVICE \
+    --output json 2>/dev/null |
+jq -r '
+    .ResultsByTime[].Groups[] |
+    [
+        .Keys[0],
+        (.Metrics.UnblendedCost.Amount // "0")
+    ] |
+    @tsv
+' |
+sort -k2 -nr |
+while IFS=$'\t' read -r SERVICE COST
+do
+    echo "$SERVICE | $COST USD"
+done
+
+
+# ============================================================
+# SUMMARY COUNTS
+# ============================================================
+
+echo ""
+echo "============================================================"
+echo "RESOURCE SUMMARY"
+echo "============================================================"
+
+TOTAL=$(tail -n +2 "$CSV_FILE" | wc -l)
+
+echo "Total resources discovered: $TOTAL"
+
+echo ""
+echo "Resources by type:"
+tail -n +2 "$CSV_FILE" |
+cut -d',' -f1 |
+sort |
+uniq -c |
+sort -nr
+
+
+# ============================================================
+# FINAL OUTPUT
+# ============================================================
+
+echo ""
+echo "============================================================"
+echo "AUDIT COMPLETE"
+echo "============================================================"
+
+echo "CSV report : $CSV_FILE"
+echo "Text report: $TXT_FILE"
+
+echo ""
+echo "Download these files from CloudShell."
+echo ""
+
+echo "============================================================"
