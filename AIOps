@@ -11,5 +11,5 @@ sudo apt update && sudo apt install python3 python3-pip python3-venv -y
 Step-2  Install Git  
 sudo apt install git -y
 
-Step-3 Install Poppler (for pdf2image)
+Step-3 Install Poppler (for pdf2image) - as peple can do it multiple way for resume upload so its python library
 sudo apt install poppler-utils -y
