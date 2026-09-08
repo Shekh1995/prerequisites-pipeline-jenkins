@@ -13,3 +13,37 @@ sudo apt install git -y
 
 Step-3 Install Poppler (for pdf2image) - as peple can do it multiple way for resume upload so its python library
 sudo apt install poppler-utils -y
+-----------------------------------------------
+Step-1 Download Code
+git clone https://github.com/CloudDevOpsHub/Application-Tracking-System.git
+
+
+Step-2  cd Application-Tracking-System
+
+Step-3 Set Up a Virtual Environment
+ python3 -m venv venv
+ source venv/bin/activate
+
+Step-4 Install Project Dependencies
+ pip install --upgrade pip
+ pip install -r requirements.txt
+ pip install google-generativeai
+
+
+
+AWS + GCP + AI ATS System  
+Part 4 AI Gemini Setup 
+
+Get Gemini API Key from Google Cloud Platform (GCP)
+https://aistudio.google.com/api-keys
+
+Part-5 Connect AWS ATS application with GCP Gemini AI
+ 
+1.Add the API Key to Streamlit Secrets
+mkdir -p .streamlit
+vi .streamlit/secrets.toml
+
+GOOGLE_API_KEY = "your-api-key-here"
+
+2.Run the Streamlit App
+    streamlit run app.py --server.port 8501 --server.enableCORS false
