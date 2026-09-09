@@ -11,8 +11,8 @@ source venv/bin/activate
 
 Step 4: Install dependencies - pip install pandas numpy scikit-learn tabulate matplotlib colorama (1-liners)
 
-pip install pandas numpy scikit-learn tabulate
-pip install pandas numpy scikit-learn tabulate matplotlib Colorama
+#pip install pandas numpy scikit-learn tabulate
+#pip install pandas numpy scikit-learn tabulate matplotlib Colorama
 
 Step 5: Run the Python AI Scripts
 
