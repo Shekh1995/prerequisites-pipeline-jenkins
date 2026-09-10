@@ -82,6 +82,8 @@ eksctl create cluster \
 --nodes-max 3 \
 --managed 
 
+--> python train.py
+
 kubectl apply -f k8s.deploy.yaml 
 kubectl get deploy
 kubectel get svc
